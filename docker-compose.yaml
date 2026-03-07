@@ -1,0 +1,41 @@
+services:
+  facade:
+    image: facade
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: facade
+      args:
+        PYTHON_TAG: ${PYTHON_TAG:-latest}
+    ports:
+      - 80
+    develop:
+      watch:
+        - path: services/facade
+          action: rebuild
+
+  logging:
+    image: logging
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: logging
+      args:
+        PYTHON_TAG: ${PYTHON_TAG:-latest}
+    develop:
+      watch:
+        - path: services/logsvc
+          action: rebuild
+
+  counter:
+    image: counter
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: counter
+      args:
+        PYTHON_TAG: ${PYTHON_TAG:-latest}
+    develop:
+      watch:
+        - path: services/countersvc
+          action: rebuild

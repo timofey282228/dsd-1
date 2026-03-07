@@ -1,0 +1,16 @@
+__pycache__
+dist/
+.venv
+
+# poetry is useful for having `install` and `shell` which "just work"
+poetry.lock
+
+# report
+report/
+
+# vscode 
+.vscode/
+
+# results
+*.bak
+*.csv
