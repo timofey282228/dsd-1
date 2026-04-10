@@ -1,6 +1,8 @@
+from abc import ABCMeta
 from asyncio.locks import Lock
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
-from typing import Annotated, Mapping
+from typing import Annotated
 
 import pydantic
 from fastapi import Body, FastAPI, Request
@@ -56,7 +58,7 @@ class Counter:
 #  MARK: API
 
 
-class ApiState(Mapping):
+class ApiState(Mapping, metaclass=ABCMeta):
     counter: Counter
 
 
@@ -76,7 +78,7 @@ async def post_balance(
     user_id: UserId,
     transaction: Annotated[Transaction, Body()],
 ) -> UserBalance:
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
     balance = await request.state.counter.execute_transaction(
         user_id=user_id,
         transaction=transaction,
@@ -92,7 +94,7 @@ async def get_balance(
     request: Request,
     user_id: UserId,
 ) -> UserBalance:
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
     return UserBalance(
         balance=await request.state.counter.get_balance(user_id=user_id),
     )
@@ -102,5 +104,5 @@ async def get_balance(
 async def get_all_balances(
     request: Request,
 ) -> AllUserBalances:
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
     return AllUserBalances(await request.state.counter.get_balances())

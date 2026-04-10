@@ -1,9 +1,10 @@
 import asyncio
 import datetime
 import time
-from collections.abc import Coroutine
+from abc import ABCMeta
+from collections.abc import Coroutine, Mapping
 from contextlib import asynccontextmanager
-from typing import Annotated, Mapping
+from typing import Annotated
 from uuid import UUID, uuid7
 
 import httpx
@@ -25,7 +26,7 @@ class TransactionRequest(pydantic.BaseModel):
 class TransactionData(TransactionRequest):
     user_id: UserId
     timestamp: datetime.datetime = pydantic.Field(
-        default_factory=datetime.datetime.now()
+        default_factory=lambda: datetime.datetime.now()
     )
 
 
@@ -49,7 +50,7 @@ class TransactionList(pydantic.RootModel):
 class UserTransaction(pydantic.BaseModel):
     amount: int
     timestamp: datetime.datetime = pydantic.Field(
-        default_factory=datetime.datetime.now()
+        default_factory=lambda: datetime.datetime.now()
     )
     transaction_id: UUID
 
@@ -177,7 +178,7 @@ class CounterService(_Timed):
 #  MARK: API
 
 
-class ApiState(Mapping):
+class ApiState(Mapping, metaclass=ABCMeta):
     logging_service: LoggingService
     counter_service: CounterService
 
@@ -252,7 +253,7 @@ async def post_user_amount(
     amount_transact: Annotated[TransactionRequest, Body()],
     timed: Annotated[bool, Query()] = False,
 ) -> TransactionResult | TimedTransactionResult:
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
     transaction_timestamp = datetime.datetime.now()
     transaction_id = uuid7()
 
@@ -293,7 +294,7 @@ async def get_user_account(
     request: Request,
     user_id: int,
 ) -> UserStatement:
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
 
     async with asyncio.TaskGroup() as backend_tasks:
         balance_task = backend_tasks.create_task(
@@ -324,7 +325,7 @@ async def get_user_account(
 
 @api.get("/balances")
 async def get_accounts(request: Request) -> AllUserBalances:
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
     user_balance = await request.state.counter_service.get_all_balances()
     return user_balance
 
@@ -334,7 +335,7 @@ async def get_accounts(request: Request) -> AllUserBalances:
 
 @api.get("/timing_stats")
 async def request_proc_time(request: Request):
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
     return ServiceTimeStats(
         countersvc=await request.state.counter_service.get_measured_time(),
         logsvc=await request.state.logging_service.get_measured_time(),

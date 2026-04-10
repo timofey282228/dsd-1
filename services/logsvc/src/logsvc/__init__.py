@@ -1,8 +1,10 @@
 import datetime
+from abc import ABCMeta
 from asyncio.locks import Lock
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from itertools import starmap
-from typing import Mapping
+from typing import override
 from uuid import UUID
 
 import pydantic
@@ -54,7 +56,7 @@ class Logging:
                     **transaction_data.model_dump(),
                 ),
                 filter(
-                    lambda pair: pair[1].user_id == user_id,
+                    lambda pair: pair[1].user_id == user_id,  # type: ignore[arg-type, index]
                     trx_shallow_copy.items(),
                 ),
             )
@@ -64,7 +66,7 @@ class Logging:
 #  MARK: API
 
 
-class ApiState(Mapping):
+class ApiState(Mapping, metaclass=ABCMeta):
     logging: Logging
 
 
@@ -84,7 +86,7 @@ async def post_transaction(
     transaction_id: UUID,
     transaction_data: TransactionData,
 ):
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
     await request.state.logging.add_transaction(
         transaction_id=transaction_id,
         transaction_data=transaction_data,
@@ -99,5 +101,5 @@ async def get_transactions(
     request: Request,
     user_id: UserId,
 ) -> TransactionList:
-    request: Request[ApiState] = request
+    request: Request[ApiState] = request  # type: ignore[no-redef]
     return await request.state.logging.get_user_transactions(user_id=user_id)
