@@ -1,18 +1,22 @@
 import asyncio
 import datetime
+import logging
+import random
 import time
 from abc import ABCMeta
 from collections.abc import Coroutine, Mapping
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Iterable
 from uuid import UUID, uuid7
 
 import httpx
 import pydantic
 from fastapi import Body, FastAPI, Query, Request
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LOGGING_SERVICE_URL = httpx.URL("http://logging")
 COUNTER_SERVICE_ENDPOINT = httpx.URL("http://counter")
+MAX_TIMEOUT_LOGGING = 32
 
 # MARK: models
 
@@ -79,6 +83,18 @@ class TimedTransactionResult(TransactionResult):
     timings: ServiceTimeStats
 
 
+class Config(BaseSettings):
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        env_prefix="FACADE_",
+        env_prefix_target="alias",
+        validate_default=True,
+    )
+    logging_instances: list[str] = pydantic.Field(
+        default=["logging"], alias="LOGGING_INSTANCES"
+    )
+
+
 #  MARK: service interfaces
 
 
@@ -102,31 +118,60 @@ class _Timed:
 
 
 class LoggingService(_Timed):
-    def __init__(self, http_client: httpx.AsyncClient):
+    def __init__(
+        self, http_client: httpx.AsyncClient, logging_instances: Iterable[str]
+    ):
         super().__init__()
         self.http_client = http_client
+        self.valid_logging_instances = tuple(logging_instances)
+
+    def random_instance(self):
+        return random.choice(self.logging_instances)
 
     async def add_transaction(
         self,
         transaction_id: UUID,
         logged_transaction_data: TransactionData,
     ):
-        (
-            await self.timed(
-                self.http_client.post(
-                    LOGGING_SERVICE_URL.copy_with(
-                        path=f"/transactions/{transaction_id}"
-                    ),
-                    headers={"content-type": "application/json"},
-                    content=logged_transaction_data.model_dump_json(),
-                )
+        eto = 1 / 8
+        while True:
+            url = httpx.URL(
+                scheme="http",
+                host=self.random_instance(),
+                path=f"/transactions/{transaction_id}",
             )
-        ).raise_for_status()
+
+            try:
+                (
+                    await self.timed(
+                        self.http_client.post(
+                            url,
+                            headers={"content-type": "application/json"},
+                            content=logged_transaction_data.model_dump_json(),
+                        )
+                    )
+                ).raise_for_status()
+                break
+            except httpx.TransportError as e:
+                logging.exception(
+                    "%s/%s: exception",
+                    logged_transaction_data.user_id,
+                    transaction_id,
+                    exc_info=e,
+                )
+
+            asyncio.sleep(eto)
+            if eto < MAX_TIMEOUT_LOGGING:
+                eto *= 2
 
     async def get_transactions(self, user_id: UserId) -> TransactionList:
         transactions_response = (
             await self.http_client.get(
-                LOGGING_SERVICE_URL.copy_with(path=f"/users/{user_id}/transactions"),
+                httpx.URL(
+                    scheme="http",
+                    host=self.random_instance(),
+                    path=f"/users/{user_id}/transactions",
+                )
             )
         ).raise_for_status()
 
@@ -181,13 +226,19 @@ class CounterService(_Timed):
 class ApiState(Mapping, metaclass=ABCMeta):
     logging_service: LoggingService
     counter_service: CounterService
+    config: Config
 
 
 @asynccontextmanager
 async def api_lifespan(_: FastAPI):
+    service_config = Config()
+
     async with httpx.AsyncClient() as http_client:
         yield {
-            "logging_service": LoggingService(http_client=http_client),
+            "logging_service": LoggingService(
+                http_client=http_client,
+                logging_instances=service_config.logging_instances,
+            ),
             "counter_service": CounterService(http_client=http_client),
         }
 

@@ -1,14 +1,14 @@
 import datetime
 from abc import ABCMeta
-from asyncio.locks import Lock
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
-from itertools import starmap
-from typing import override
 from uuid import UUID
 
 import pydantic
 from fastapi import FastAPI, Request
+from hazelcast.asyncio import HazelcastClient
+from hazelcast.config import Config as HazelcastConfig
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #  MARK: models
 
@@ -29,50 +29,45 @@ class TransactionList(pydantic.RootModel):
     root: list[Transaction]
 
 
-#  MARK: internals
-
-
-class Logging:
-    def __init__(self):
-        self.lock = Lock()
-        self.transactions: dict[UUID, TransactionData] = {}
-
-    async def add_transaction(
-        self,
-        transaction_id: UUID,
-        transaction_data: TransactionData,
-    ):
-        async with self.lock:
-            self.transactions[transaction_id] = transaction_data
-
-    async def get_user_transactions(self, user_id: UserId) -> TransactionList:
-        async with self.lock:
-            trx_shallow_copy = self.transactions.copy()
-
-        return TransactionList(
-            starmap(
-                lambda transaction_id, transaction_data: Transaction(
-                    transaction_id=transaction_id,
-                    **transaction_data.model_dump(),
-                ),
-                filter(
-                    lambda pair: pair[1].user_id == user_id,  # type: ignore[arg-type, index]
-                    trx_shallow_copy.items(),
-                ),
-            )
-        )
+class Config(BaseSettings):
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        env_prefix="LOGGING_",
+        env_prefix_target="alias",
+        validate_default=True,
+    )
+    hazelcast_cluster: str = pydantic.Field(alias="HAZELCAST_CLUSTER")
+    hazelcast_cluster_members: list[str] = pydantic.Field(
+        default=["127.0.0.1", "hazelcast"], alias="HAZELCAST_CLUSTER_MEMBERS"
+    )
 
 
 #  MARK: API
 
 
 class ApiState(Mapping, metaclass=ABCMeta):
-    logging: Logging
+    logging: AbstractLogging
+    config: Config
 
 
 @asynccontextmanager
 async def api_lifespan(_: FastAPI):
-    yield {"logging": Logging()}
+    service_config = Config()
+
+    hz_config = HazelcastConfig()
+    hz_config.client_name = "logsvc"
+    hz_config.cluster_name = service_config.hazelcast_cluster
+    hz_config.cluster_members = ["hazelcast"]
+
+    hz_client = await HazelcastClient.create_and_start(config=hz_config)
+
+    yield {
+        "config": service_config,
+        # "logging": MemoryLogging()
+        "logging": await HazelcastLogging.from_hz_client(hz_client),
+    }
+
+    await hz_client.shutdown()
 
 
 api = FastAPI(lifespan=api_lifespan)
@@ -103,3 +98,7 @@ async def get_transactions(
 ) -> TransactionList:
     request: Request[ApiState] = request  # type: ignore[no-redef]
     return await request.state.logging.get_user_transactions(user_id=user_id)
+
+
+from .abstract_logging import AbstractLogging
+from .hazelcast_logging import HazelcastLogging

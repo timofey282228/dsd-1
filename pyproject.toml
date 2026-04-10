@@ -1,5 +1,5 @@
 [project]
-name = "microservices-basics"
+name = "microservices"
 version = "0.1.0"
 description = ""
 authors = [{ name = "timofey282228", email = "tymopod-ipt25@lll.kpi.ua" }]

@@ -7,14 +7,21 @@ services:
       target: facade
       args:
         PYTHON_TAG: ${PYTHON_TAG:-latest}
+    environment:
+      FACADE_LOGGING_INSTANCES: '["logging-1", "logging-2", "logging-3"]'
     ports:
       - 80
+    depends_on:
+      - logging-1
+      - logging-2
+      - logging-3
+      - counter
     develop:
       watch:
         - path: services/facade
           action: rebuild
 
-  logging:
+  logging-1: &logging-service
     image: logging
     build:
       context: .
@@ -22,10 +29,23 @@ services:
       target: logging
       args:
         PYTHON_TAG: ${PYTHON_TAG:-latest}
+    environment:
+      LOGGING_HAZELCAST_CLUSTER: ${HAZELCAST_CLUSTER_NAME}
     develop:
       watch:
         - path: services/logsvc
           action: rebuild
+    depends_on:
+      - hazelcast
+    # Deploy performs worse
+    # deploy:
+    #   replicas: 3
+    #   endpoint_mode: dnsrr
+    #   restart_policy:
+    #     condition: on-failure
+
+  logging-2: *logging-service
+  logging-3: *logging-service
 
   counter:
     image: counter
@@ -39,3 +59,18 @@ services:
       watch:
         - path: services/countersvc
           action: rebuild
+
+  hazelcast:
+    image: hazelcast/hazelcast:5.4.0
+    ports:
+      - 5701
+    environment:
+      HZ_CLUSTERNAME: ${HAZELCAST_CLUSTER_NAME}
+      # HZ_CPSUBSYSTEM_CPMEMBERCOUNT: 3
+      # HZ_CPSUBSYSTEM_SESSIONHEARTBEATINTERVALSECONDS: 3
+      # HZ_CPSUBSYSTEM_SESSIONTIMETOLIVESECONDS: 10
+    deploy:
+      replicas: 3
+      endpoint_mode: dnsrr
+      restart_policy:
+        condition: on-failure
