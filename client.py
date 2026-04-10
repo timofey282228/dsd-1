@@ -98,6 +98,7 @@ class Client(multiprocessing.Process):
         response = http_client.post(
             url=f"/users/{user_id}/amount?timed=1",
             json={"amount": amount},
+            timeout=120.0,
         )
         elapsed_ns = time.perf_counter_ns() - start_ns
         self._request_processing_time_ns += elapsed_ns
