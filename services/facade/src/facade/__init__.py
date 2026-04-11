@@ -214,53 +214,12 @@ class LoggingService(_Timed):
         )
 
 
-class CounterService(_Timed):
-    def __init__(self, http_client: httpx.AsyncClient):
-        super().__init__()
-        self.http_client = http_client
-
-    async def execute_transaction(
-        self,
-        user_id: UserId,
-        transaction: TransactionRequest,
-    ) -> UserBalance:
-        counter_response = (
-            await self.timed(
-                self.http_client.post(
-                    COUNTER_SERVICE_ENDPOINT.copy_with(path=f"/users/{user_id}"),
-                    headers={"content-type": "application/json"},
-                    content=transaction.model_dump_json(),
-                )
-            )
-        ).raise_for_status()
-
-        return UserBalance.model_validate_json(counter_response.read())
-
-    async def get_balance(self, user_id: UserId) -> UserBalance:
-        balance_response = (
-            await self.http_client.get(
-                COUNTER_SERVICE_ENDPOINT.copy_with(path=f"/users/{user_id}")
-            )
-        ).raise_for_status()
-
-        return UserBalance.model_validate_json(balance_response.read())
-
-    async def get_all_balances(self) -> AllUserBalances:
-        balances_response = (
-            await self.http_client.get(
-                COUNTER_SERVICE_ENDPOINT.copy_with(path=f"/users")
-            )
-        ).raise_for_status()
-
-        return AllUserBalances.model_validate_json(balances_response.read())
-
-
 #  MARK: API
 
 
 class ApiState(Mapping, metaclass=ABCMeta):
     logging_service: LoggingService
-    counter_service: CounterService
+    counter_service: AbstractCounterService
     config: Config
 
 
@@ -274,7 +233,7 @@ async def api_lifespan(_: FastAPI):
                 http_client=http_client,
                 logging_instances=service_config.logging_instances,
             ),
-            "counter_service": CounterService(http_client=http_client),
+            "counter_service": HttpCounterService(http_client=http_client),
         }
 
 
@@ -317,7 +276,7 @@ async def _timed_transaction(
 ) -> TimedTransactionResult:
     async with asyncio.TaskGroup() as backend_tasks:
         logging_task = backend_tasks.create_task(timed(logging_coro))
-        counter_task = backend_tasks.create_task(timed(counter_coro))
+        counter_task = backend_tasks.crate_task(timed(counter_coro))
 
     logging_time, _ = logging_task.result()
     counter_time, balance = counter_task.result()
@@ -426,3 +385,7 @@ async def request_proc_time(request: Request):
         countersvc=await request.state.counter_service.get_measured_time(),
         logsvc=await request.state.logging_service.get_measured_time(),
     )
+
+
+from .abstract_counter_service import AbstractCounterService
+from .http_counter_service import HttpCounterService
