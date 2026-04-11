@@ -5,11 +5,6 @@ from uuid import UUID
 from hazelcast.asyncio import HazelcastClient, Map
 from hazelcast.core import HazelcastJsonValue
 from hazelcast.predicate import equal
-from hazelcast.serialization.api import StreamSerializer
-from hazelcast.serialization.serialization_const import (
-    JAVASCRIPT_JSON_SERIALIZATION_TYPE,
-)
-from pydantic import BaseModel
 
 from . import Transaction, TransactionData, TransactionList
 from .abstract_logging import AbstractLogging
