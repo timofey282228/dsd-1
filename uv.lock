@@ -107,6 +107,7 @@ version = "0.1.0"
 source = { editable = "services/countersvc" }
 dependencies = [
     { name = "fastapi" },
+    { name = "hazelcast-python-client" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pymongo" },
@@ -116,6 +117,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.135.0,<0.136.0" },
+    { name = "hazelcast-python-client", specifier = ">=5.6.0" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "pymongo", specifier = ">=4.16.0" },
@@ -146,6 +148,7 @@ version = "0.1.0"
 source = { editable = "services/facade" }
 dependencies = [
     { name = "fastapi" },
+    { name = "hazelcast-python-client" },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -155,6 +158,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.135.0,<0.136.0" },
+    { name = "hazelcast-python-client", specifier = ">=5.6.0" },
     { name = "httpx", specifier = ">=0.28.1,<0.29.0" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },

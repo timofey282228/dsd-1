@@ -1,3 +1,6 @@
+import asyncio
+import logging
+import logging.config
 from abc import ABCMeta
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
@@ -5,8 +8,13 @@ from typing import Annotated
 
 import pydantic
 from fastapi import Body, FastAPI, Request
+from hazelcast.client import HazelcastClient
+from hazelcast.config import Config as HazelcastConfig
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
+
+logger = logging.getLogger(__name__)
+
 
 #  MARK: models
 
@@ -25,6 +33,11 @@ class AllUserBalances(pydantic.RootModel):
     root: dict[UserId, int]
 
 
+class AddTransactionMessage(pydantic.BaseModel):
+    user_id: UserId
+    transaction_request: Transaction
+
+
 class Config(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
@@ -34,6 +47,10 @@ class Config(BaseSettings):
     )
     mongodb_connection_string: pydantic.MongoDsn = pydantic.Field(
         alias="MONGODB_CONNECTION_STRING"
+    )
+    hazelcast_cluster: str = pydantic.Field(alias="HAZELCAST_CLUSTER")
+    hazelcast_cluster_members: list[str] = pydantic.Field(
+        default=["127.0.0.1", "hazelcast"], alias="HAZELCAST_CLUSTER_MEMBERS"
     )
 
 
@@ -49,16 +66,36 @@ class ApiState(Mapping, metaclass=ABCMeta):
 @asynccontextmanager
 async def api_lifespan(_: FastAPI):
     service_config = Config()
+
+    hz_config = HazelcastConfig()
+    hz_config.client_name = "counter"
+    hz_config.cluster_name = service_config.hazelcast_cluster
+    hz_config.cluster_members = ["hazelcast"]
+
+    hz_client = HazelcastClient(config=hz_config)
+
     async with AsyncMongoClient(
         service_config.mongodb_connection_string.encoded_string(),
         uuidRepresentation="standard",
     ) as mongodb_client:
+        counter = MongoCounter(collection=mongodb_client["microservices"]["counter"])
+        logger.debug("Creating CounterQueueListener instance...")
+        queue_listener = CounterQueueListener(counter, hz_client)
+        await queue_listener.start()
+
         yield {
             "counter": MongoCounter(
                 collection=mongodb_client["microservices"]["counter"]
             ),
             "mongodb": mongodb_client,
             "config": service_config,
+            "queue_listener": queue_listener,
+        }
+
+        queue_listener.shutdown()
+
+    hz_client.shutdown()
+
         }
 
 
@@ -104,4 +141,5 @@ async def get_all_balances(
 
 
 from .abstract_counter import AbstractCounter
+from .counter_queue_listener import CounterQueueListener
 from .mongo_counter import MongoCounter

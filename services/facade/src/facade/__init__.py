@@ -13,6 +13,7 @@ from uuid import UUID, uuid7
 import httpx
 import pydantic
 from fastapi import Body, FastAPI, Query, Request
+from hazelcast import HazelcastClient
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 COUNTER_SERVICE_ENDPOINT = httpx.URL("http://counter")
@@ -92,6 +93,10 @@ class Config(BaseSettings):
     )
     logging_instances: list[str] = pydantic.Field(
         default=["logging"], alias="LOGGING_INSTANCES"
+    )
+    hazelcast_cluster: str = pydantic.Field(alias="HAZELCAST_CLUSTER")
+    hazelcast_cluster_members: list[str] = pydantic.Field(
+        default=["127.0.0.1", "hazelcast"], alias="HAZELCAST_CLUSTER_MEMBERS"
     )
 
 
@@ -227,13 +232,23 @@ class ApiState(Mapping, metaclass=ABCMeta):
 async def api_lifespan(_: FastAPI):
     service_config = Config()
 
+    hz_client = HazelcastClient(
+        client_name="facade",
+        cluster_name=service_config.hazelcast_cluster,
+        cluster_members=["hazelcast"],
+    )
+
     async with httpx.AsyncClient() as http_client:
         yield {
             "logging_service": LoggingService(
                 http_client=http_client,
                 logging_instances=service_config.logging_instances,
             ),
-            "counter_service": HttpCounterService(http_client=http_client),
+            # "counter_service": HttpCounterService(http_client=http_client),
+            "counter_service": HazelcastQueueCounterService(
+                http_client=http_client,
+                hz_client=hz_client,
+            ),
         }
 
 
@@ -388,4 +403,5 @@ async def request_proc_time(request: Request):
 
 
 from .abstract_counter_service import AbstractCounterService
+from .hazelcast_queue_counter_service import HazelcastQueueCounterService
 from .http_counter_service import HttpCounterService
