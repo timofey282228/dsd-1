@@ -8,20 +8,24 @@ services:
       args:
         PYTHON_TAG: ${PYTHON_TAG:-latest}
     environment:
-      FACADE_LOGGING_INSTANCES: '["logging-1", "logging-2", "logging-3"]'
+      FACADE_HAZELCAST_CLUSTER: ${HAZELCAST_CLUSTER_NAME}
+      FACADE_CONFIGSERVER_NETLOC": "config-server"
     ports:
       - 80
     depends_on:
-      - logging-1
-      - logging-2
-      - logging-3
-      - counter
+      logging:
+        condition: service_started
+      counter:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+        restart: true
     develop:
       watch:
         - path: services/facade
           action: rebuild
 
-  logging-1: &logging-service
+  logging:
     image: logging
     build:
       context: .
@@ -31,21 +35,22 @@ services:
         PYTHON_TAG: ${PYTHON_TAG:-latest}
     environment:
       LOGGING_HAZELCAST_CLUSTER: ${HAZELCAST_CLUSTER_NAME}
+      LOGGING_CONFIGSERVER_NETLOC: "config-server"
+    depends_on:
+      hazelcast:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+        restart: true
     develop:
       watch:
         - path: services/logsvc
           action: rebuild
-    depends_on:
-      - hazelcast
-    # Deploy performs worse
-    # deploy:
-    #   replicas: 3
-    #   endpoint_mode: dnsrr
-    #   restart_policy:
-    #     condition: on-failure
-
-  logging-2: *logging-service
-  logging-3: *logging-service
+    deploy:
+      replicas: 3
+      endpoint_mode: dnsrr
+      restart_policy:
+        condition: on-failure
 
   counter:
     image: counter
@@ -57,6 +62,14 @@ services:
         PYTHON_TAG: ${PYTHON_TAG:-latest}
     environment:
       COUNTER_MONGODB_CONNECTION_STRING: "mongodb://${MONGODB_COUNTER_USER}:${MONGODB_COUNTER_PASSWORD}@mongodb"
+      COUNTER_HAZELCAST_CLUSTER: ${HAZELCAST_CLUSTER_NAME}
+      COUNTER_CONFIGSERVER_NETLOC: "config-server"
+    depends_on:
+      hazelcast:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+        restart: true
     develop:
       watch:
         - path: services/countersvc
@@ -65,7 +78,7 @@ services:
   hazelcast:
     image: hazelcast/hazelcast:5.4.0
     ports:
-      - 5701
+      - 127.0.0.1:0:5701
     environment:
       HZ_CLUSTERNAME: ${HAZELCAST_CLUSTER_NAME}
       # HZ_CPSUBSYSTEM_CPMEMBERCOUNT: 3
@@ -86,6 +99,36 @@ services:
       - 127.0.0.1:27017:27017
     volumes:
       - mongo-db:/data/db
+
+  config-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: config-server
+      args:
+        PYTHON_TAG: ${PYTHON_TAG:-latest}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/.venv/bin/python",
+          "-c",
+          "import httpx; httpx.get('http://127.0.0.1/health').raise_for_status()",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 3s
+    ports:
+      - 127.0.0.1:0:80
+    environment:
+      CONFIGSERVER_SERVICES_CONFIGS: >-
+        {
+          "logging": {
+            "max_instances": 3
+          }
+        }
+    restart: unless-stopped
 
 volumes:
   mongo-db:

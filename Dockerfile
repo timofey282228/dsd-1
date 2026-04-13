@@ -25,12 +25,14 @@ RUN --mount=type=cache,target=~/.cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=services/logsvc/pyproject.toml,target=services/logsvc/pyproject.toml \
+    --mount=type=bind,source=packages,target=packages \
     uv sync --package logsvc --no-install-project
 # Install service itself in a different layer
 RUN --mount=type=cache,target=~/.cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=services/logsvc,target=services/logsvc \
+    --mount=type=bind,source=packages,target=packages \
     uv sync --package logsvc
 
 
@@ -45,12 +47,14 @@ RUN --mount=type=cache,target=~/.cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=services/countersvc/pyproject.toml,target=services/countersvc/pyproject.toml \
+    --mount=type=bind,source=packages,target=packages \
     uv sync --package countersvc --no-install-project
 # Install service itself in a different layer
 RUN --mount=type=cache,target=~/.cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=services/countersvc,target=services/countersvc \
+    --mount=type=bind,source=packages,target=packages \
     uv sync --package countersvc
 
 
@@ -65,15 +69,37 @@ RUN --mount=type=cache,target=~/.cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=services/facade/pyproject.toml,target=services/facade/pyproject.toml \
+    --mount=type=bind,source=packages,target=packages \
     uv sync --package facade --no-install-project
 # Install service itself in a different layer
 RUN --mount=type=cache,target=~/.cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=services/facade,target=services/facade \
+    --mount=type=bind,source=packages,target=packages \
     uv sync --package facade
 
 
 FROM microservice_base AS facade
 COPY --link --from=facade-build .venv /.venv
 CMD [ "uvicorn", "--host=0.0.0.0", "--port=80", "--no-access-log", "facade:api"]
+
+
+FROM uv AS config-server-build
+# Install dependencies
+RUN --mount=type=cache,target=~/.cache \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=services/config-server/pyproject.toml,target=services/config-server/pyproject.toml \
+    uv sync --package config-server --no-install-project
+# Install service itself in a different layer
+RUN --mount=type=cache,target=~/.cache \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=services/config-server,target=services/config-server \
+    uv sync --package config-server
+
+
+FROM microservice_base AS config-server
+COPY --link --from=config-server-build .venv /.venv
+CMD [ "uvicorn", "--host=0.0.0.0", "--port=80", "--no-access-log", "config_server:api"]

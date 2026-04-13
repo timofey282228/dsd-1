@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import logging.config
 from abc import ABCMeta
@@ -7,11 +6,17 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 import pydantic
+from config_server_client import ConfigServerClient
 from fastapi import Body, FastAPI, Request
 from hazelcast.client import HazelcastClient
 from hazelcast.config import Config as HazelcastConfig
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
+
+SERVICE_NAME = "counter"
+SERVICE_PORT = 80
+HEALTHCHECK_PATH = "/health"
+
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +57,7 @@ class Config(BaseSettings):
     hazelcast_cluster_members: list[str] = pydantic.Field(
         default=["127.0.0.1", "hazelcast"], alias="HAZELCAST_CLUSTER_MEMBERS"
     )
+    config_server_netloc: str = pydantic.Field(alias="CONFIGSERVER_NETLOC")
 
 
 #  MARK: API
@@ -66,6 +72,7 @@ class ApiState(Mapping, metaclass=ABCMeta):
 @asynccontextmanager
 async def api_lifespan(_: FastAPI):
     service_config = Config()
+    config_server_client = ConfigServerClient(service_config.config_server_netloc)
 
     hz_config = HazelcastConfig()
     hz_config.client_name = "counter"
@@ -73,6 +80,8 @@ async def api_lifespan(_: FastAPI):
     hz_config.cluster_members = ["hazelcast"]
 
     hz_client = HazelcastClient(config=hz_config)
+
+    await config_server_client.register(SERVICE_NAME, SERVICE_PORT, HEALTHCHECK_PATH)
 
     async with AsyncMongoClient(
         service_config.mongodb_connection_string.encoded_string(),
@@ -94,11 +103,31 @@ async def api_lifespan(_: FastAPI):
 
         queue_listener.shutdown()
 
+    await config_server_client.unregister(SERVICE_NAME, SERVICE_PORT)
     hz_client.shutdown()
 
-        }
 
-
+logging.config.dictConfig(
+    {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "default": {
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr",
+            },
+        },
+        "root": {
+            "handlers": ["default"],
+            "level": logging.WARNING,
+        },
+        "loggers": {
+            __name__: {
+                "level": logging.DEBUG,
+            }
+        },
+    }
+)
 api = FastAPI(lifespan=api_lifespan)
 
 # MARK: POST
@@ -138,6 +167,11 @@ async def get_all_balances(
 ) -> AllUserBalances:
     request: Request[ApiState] = request  # type: ignore[no-redef]
     return AllUserBalances(await request.state.counter.get_balances())
+
+
+@api.get(HEALTHCHECK_PATH)
+async def health():
+    return True
 
 
 from .abstract_counter import AbstractCounter

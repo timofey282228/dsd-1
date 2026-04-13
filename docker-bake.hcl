@@ -3,7 +3,7 @@ variable "PYTHON_TAG" {
 }
 
 group "default" {
-    targets = [ "uv", "counter", "logging", "facade" ]
+    targets = [ "uv", "counter", "logging", "facade", "config-server" ]
 }
 
 target "uv" {
@@ -41,6 +41,16 @@ target "facade" {
     target = "facade"
     context = "."
     tags = ["facade"]
+    args = {
+        "PYTHON_TAG" = PYTHON_TAG
+    }
+}
+
+target "config-server" {
+    dockerfile = "Dockerfile"
+    target = "config-server"
+    context = "."
+    tags = ["config-server"]
     args = {
         "PYTHON_TAG" = PYTHON_TAG
     }

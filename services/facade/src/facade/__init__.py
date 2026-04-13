@@ -91,9 +91,7 @@ class Config(BaseSettings):
         env_prefix_target="alias",
         validate_default=True,
     )
-    logging_instances: list[str] = pydantic.Field(
-        default=["logging"], alias="LOGGING_INSTANCES"
-    )
+
     hazelcast_cluster: str = pydantic.Field(alias="HAZELCAST_CLUSTER")
     hazelcast_cluster_members: list[str] = pydantic.Field(
         default=["127.0.0.1", "hazelcast"], alias="HAZELCAST_CLUSTER_MEMBERS"
