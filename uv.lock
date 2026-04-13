@@ -126,7 +126,7 @@ requires-dist = [
 [[package]]
 name = "config-server-client"
 version = "0.1.0"
-source = { directory = "packages/config-server-client" }
+source = { editable = "packages/config-server-client" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
@@ -156,7 +156,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "config-server-client", directory = "packages/config-server-client" },
+    { name = "config-server-client", editable = "packages/config-server-client" },
     { name = "fastapi", specifier = ">=0.135.0,<0.136.0" },
     { name = "hazelcast-python-client", specifier = ">=5.6.0" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
@@ -199,7 +199,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "config-server-client", directory = "packages/config-server-client" },
+    { name = "config-server-client", editable = "packages/config-server-client" },
     { name = "fastapi", specifier = ">=0.135.0,<0.136.0" },
     { name = "hazelcast-python-client", specifier = ">=5.6.0" },
     { name = "httpx", specifier = ">=0.28.1,<0.29.0" },
@@ -347,7 +347,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "config-server-client", directory = "packages/config-server-client" },
+    { name = "config-server-client", editable = "packages/config-server-client" },
     { name = "fastapi", specifier = ">=0.135.0,<0.136.0" },
     { name = "hazelcast-python-client", specifier = ">=5.6.0" },
     { name = "httpx", specifier = ">=0.28.1" },

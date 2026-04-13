@@ -9,7 +9,7 @@ services:
         PYTHON_TAG: ${PYTHON_TAG:-latest}
     environment:
       FACADE_HAZELCAST_CLUSTER: ${HAZELCAST_CLUSTER_NAME}
-      FACADE_CONFIGSERVER_NETLOC": "config-server"
+      FACADE_CONFIGSERVER_NETLOC: "config-server"
     ports:
       - 80
     depends_on:

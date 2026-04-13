@@ -20,7 +20,7 @@ test = ["pytest (>=9.0.2,<10.0.0)", "pytest-asyncio (>=1.3.0,<2.0.0)"]
 members = ["services/*"]
 
 [tool.uv.sources]
-config-server-client = { path = "packages/config-server-client" }
+config-server-client = { path = "packages/config-server-client", editable = true }
 
 [tool.isort]
 profile = "black"

@@ -3,7 +3,6 @@ from typing import override
 import httpx
 
 from . import (
-    COUNTER_SERVICE_ENDPOINT,
     AllUserBalances,
     TransactionRequest,
     UserBalance,
@@ -15,6 +14,9 @@ from .abstract_counter_service import AbstractCounterService
 
 class HttpCounterService(_Timed, AbstractCounterService):
     def __init__(self, http_client: httpx.AsyncClient):
+        """
+        :param client: client instance with a valid base URL for the service
+        """
         super().__init__()
         self.http_client = http_client
 
@@ -27,7 +29,7 @@ class HttpCounterService(_Timed, AbstractCounterService):
         counter_response = (
             await self.timed(
                 self.http_client.post(
-                    COUNTER_SERVICE_ENDPOINT.copy_with(path=f"/users/{user_id}"),
+                    f"/users/{user_id}",
                     headers={"content-type": "application/json"},
                     content=transaction.model_dump_json(),
                 )
@@ -39,19 +41,12 @@ class HttpCounterService(_Timed, AbstractCounterService):
     @override
     async def get_balance(self, user_id: UserId) -> UserBalance:
         balance_response = (
-            await self.http_client.get(
-                COUNTER_SERVICE_ENDPOINT.copy_with(path=f"/users/{user_id}")
-            )
+            await self.http_client.get(f"/users/{user_id}")
         ).raise_for_status()
 
         return UserBalance.model_validate_json(balance_response.read())
 
     @override
     async def get_all_balances(self) -> AllUserBalances:
-        balances_response = (
-            await self.http_client.get(
-                COUNTER_SERVICE_ENDPOINT.copy_with(path=f"/users")
-            )
-        ).raise_for_status()
-
+        balances_response = (await self.http_client.get(f"/users")).raise_for_status()
         return AllUserBalances.model_validate_json(balances_response.read())

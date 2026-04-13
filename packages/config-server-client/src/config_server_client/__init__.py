@@ -7,9 +7,11 @@ from httpx import URL
 
 logger = logging.getLogger(__name__)
 
+type InstanceAddress = tuple[str, int]
+
 
 class ServiceInstances(pydantic.RootModel):
-    root: set[tuple[str, int]]
+    root: set[InstanceAddress]
 
 
 class ConfigServerClient:

@@ -12,11 +12,12 @@ from uuid import UUID, uuid7
 
 import httpx
 import pydantic
+from config_server_client import ConfigServerClient
+from facade.instance_generator import RandomInstanceGenerator, ServiceInstance
 from fastapi import Body, FastAPI, Query, Request
 from hazelcast import HazelcastClient
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-COUNTER_SERVICE_ENDPOINT = httpx.URL("http://counter")
 MAX_ETO = 32
 
 # MARK: models
@@ -97,6 +98,8 @@ class Config(BaseSettings):
         default=["127.0.0.1", "hazelcast"], alias="HAZELCAST_CLUSTER_MEMBERS"
     )
 
+    config_server_netloc: str = pydantic.Field(alias="CONFIGSERVER_NETLOC")
+
 
 #  MARK: service interfaces
 
@@ -122,14 +125,16 @@ class _Timed:
 
 class LoggingService(_Timed):
     def __init__(
-        self, http_client: httpx.AsyncClient, logging_instances: Iterable[str]
+        self,
+        http_client: httpx.AsyncClient,
+        instance_generator: RandomInstanceGenerator,
     ):
         super().__init__()
         self.http_client = http_client
-        self.logging_instances = tuple(logging_instances)
+        self.instance_generator: RandomInstanceGenerator = instance_generator
 
-    def random_instance(self):
-        return random.choice(self.logging_instances)
+    async def instance(self) -> ServiceInstance:
+        return await self.instance_generator.random_instance()
 
     @staticmethod
     async def _with_eto_retry_on[O](
@@ -153,20 +158,25 @@ class LoggingService(_Timed):
         transaction_id: UUID,
         logged_transaction_data: TransactionData,
     ):
-        url = httpx.URL(
-            scheme="http",
-            host=self.random_instance(),
-            path=f"/transactions/{transaction_id}",
-        )
-        (
-            await self.timed(
-                self.http_client.post(
-                    url,
-                    headers={"content-type": "application/json"},
-                    content=logged_transaction_data.model_dump_json(),
-                )
+        async with (await self.instance()).refreshing_on(
+            (httpx.TransportError,)
+        ) as instance_address:
+            host, port = instance_address
+            url = httpx.URL(
+                scheme="http",
+                host=host,
+                port=port,
+                path=f"/transactions/{transaction_id}",
             )
-        ).raise_for_status()
+            (
+                await self.timed(
+                    self.http_client.post(
+                        url,
+                        headers={"content-type": "application/json"},
+                        content=logged_transaction_data.model_dump_json(),
+                    )
+                )
+            ).raise_for_status()
 
     async def add_transaction(
         self,
@@ -189,15 +199,17 @@ class LoggingService(_Timed):
         )
 
     async def _get_get_transactions(self, user_id: UserId) -> TransactionList:
-        transactions_response = (
-            await self.http_client.get(
-                httpx.URL(
-                    scheme="http",
-                    host=self.random_instance(),
-                    path=f"/users/{user_id}/transactions",
-                )
+        async with (await self.instance()).refreshing_on(
+            (httpx.TransportError,)
+        ) as instance_address:
+            host, port = instance_address
+            url = httpx.URL(
+                scheme="http",
+                host=host,
+                port=port,
+                path=f"/users/{user_id}/transactions",
             )
-        ).raise_for_status()
+            transactions_response = (await self.http_client.get(url)).raise_for_status()
 
         transactions = TransactionList.model_validate_json(transactions_response.read())
         return transactions
@@ -236,16 +248,24 @@ async def api_lifespan(_: FastAPI):
         cluster_members=["hazelcast"],
     )
 
+    config_server_client = ConfigServerClient(service_config.config_server_netloc)
+
     async with httpx.AsyncClient() as http_client:
         yield {
             "logging_service": LoggingService(
                 http_client=http_client,
-                logging_instances=service_config.logging_instances,
+                instance_generator=RandomInstanceGenerator(
+                    "logging",
+                    config_server_client,
+                ),
             ),
             # "counter_service": HttpCounterService(http_client=http_client),
             "counter_service": HazelcastQueueCounterService(
-                http_client=http_client,
                 hz_client=hz_client,
+                instance_generator=RandomInstanceGenerator(
+                    "counter",
+                    config_server_client,
+                ),
             ),
         }
 
