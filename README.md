@@ -1,4 +1,4 @@
-# Microservices basics (lab 1)
+# Microservices
 
 ## Architecture
 
@@ -6,6 +6,7 @@
 architecture-beta
     group lab1(cloud)[Microservices basics]
     group lab3(server)[Microservices Hazelcast]
+    group lab4(server)[Microservices MQ]
 
     service facade(server)[facade] in lab1
     service counter(database)[counter] in lab1
@@ -14,10 +15,20 @@ architecture-beta
     service mongodb(disk)[MongoDB] in lab3
     service hazelcast(disk)[Hazelcast] in lab3
 
-   facade:L <--> B:counter
-   facade:R <--> B:logging
-   hazelcast:B <--> T:logging
-   mongodb:B <--> T:counter
+    service configserver(disk)[config server] in lab4
+
+    mongodb:T <--> R:counter
+
+    facade:L <--> R:logging
+
+    hazelcast:T <-- B:facade
+    hazelcast:L <--> B:logging
+    hazelcast:R --> B:counter
+
+    configserver:B --> T:facade
+    configserver:R <-- T:counter
+    configserver:L <-- T:logging
+
 ```
 
 ## Structure
@@ -33,6 +44,7 @@ Most importantly:
 ├── Dockerfile
 ├── dsd1client.sh         # shell client function
 ├── .env.example          # example .env with required vars 
+├── packages              # shared dependencies of services
 ├── pyproject.toml        # shared dependencies, can use with client.py e.g. via `poetry shell` 
 ├── services              # service implementations
 │   ├── countersvc
