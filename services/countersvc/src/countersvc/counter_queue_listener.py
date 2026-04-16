@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 class CounterQueueListener:
     QUEUE_NAME = "microservices.counter"
 
-    def __init__(self, counter: AbstractCounter, client: HazelcastClient):
+    def __init__(
+        self, counter: AbstractCounter, client: HazelcastClient, queue_name=QUEUE_NAME
+    ):
         logger.debug("Initializing CounterQueueListener instance...")
         super().__init__()
-        self.queue: Queue[HazelcastJsonValue] = client.get_queue(self.QUEUE_NAME)
+        self.queue: Queue[HazelcastJsonValue] = client.get_queue(queue_name)
         self.counter: AbstractCounter = counter
         self._shutdown = threading.Event()
         self._tasks = set()

@@ -9,6 +9,7 @@ from hazelcast.proxy import Queue
 
 from . import AllUserBalances, TransactionRequest, UserBalance, UserId
 from .abstract_counter_service import AbstractCounterService
+from .abstract_random_instance_generator import ServiceInstance
 from .configserver_instance_generator import ConfigServerRandomInstanceGenerator
 
 
@@ -24,8 +25,9 @@ class HazelcastQueueCounterService(AbstractCounterService):
         self,
         hz_client: HazelcastClient,  # not the asyncio Hazelcast client, unfortunately
         instance_generator: ConfigServerRandomInstanceGenerator,
+        queue_name: str = QUEUE_NAME,
     ):
-        self.queue: Queue = hz_client.get_queue(self.QUEUE_NAME)
+        self.queue: Queue = hz_client.get_queue(queue_name)
         self.instance_generator: ConfigServerRandomInstanceGenerator = (
             instance_generator
         )

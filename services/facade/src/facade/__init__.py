@@ -9,12 +9,11 @@ import time
 from abc import ABCMeta
 from collections.abc import Coroutine, Mapping
 from contextlib import asynccontextmanager
-from typing import Annotated, Awaitable, Callable, Optional
+from typing import Annotated, Awaitable, Callable, Optional, Self
 from uuid import UUID, uuid7
 
 import httpx
 import pydantic
-from config_server_client import ConfigServerClient
 from consul import Check, Consul
 from fastapi import Body, FastAPI, Query, Request
 from hazelcast import HazelcastClient
@@ -99,13 +98,6 @@ class Config(BaseSettings):
         env_prefix_target="alias",
         validate_default=True,
     )
-
-    hazelcast_cluster: str = pydantic.Field(alias="HAZELCAST_CLUSTER")
-    hazelcast_cluster_members: list[str] = pydantic.Field(
-        default=["127.0.0.1", "hazelcast"], alias="HAZELCAST_CLUSTER_MEMBERS"
-    )
-
-    config_server_netloc: str = pydantic.Field(alias="CONFIGSERVER_NETLOC")
     consul_host: Optional[str] = pydantic.Field(default=None, alias="CONSUL_HOST")
     consul_port: Optional[int] = pydantic.Field(default=None, alias="CONSUL_PORT")
     consul_token: Optional[str] = pydantic.Field(default=None, alias="CONSUL_TOKEN")
@@ -239,6 +231,26 @@ class LoggingService(_Timed):
         )
 
 
+class ConsulConfig(pydantic.BaseModel):
+    hazelcast_cluster_name: str
+    hazelcast_cluster_members: list[str]
+    counter_hazelcast_queue_name: str
+
+    @classmethod
+    def query(cls, consul: Consul) -> Self:
+        return cls(
+            hazelcast_cluster_name=consul.kv.get("hazelcast_cluster_name")[1][
+                "Value"
+            ].decode(),
+            counter_hazelcast_queue_name=consul.kv.get("counter_hazelcast_queue_name")[
+                1
+            ]["Value"].decode(),
+            hazelcast_cluster_members=pydantic.TypeAdapter(list[str]).validate_json(
+                consul.kv.get("hazelcast_cluster_members")[1]["Value"]
+            ),
+        )
+
+
 #  MARK: API
 
 
@@ -256,14 +268,13 @@ async def api_lifespan(_: FastAPI):
         port=service_config.consul_port,
         token=service_config.consul_token,
     )
+    consul_config = ConsulConfig.query(consul)
 
     hz_client = HazelcastClient(
         client_name=SERVICE_NAME,
-        cluster_name=service_config.hazelcast_cluster,
-        cluster_members=service_config.hazelcast_cluster_members,
+        cluster_name=consul_config.hazelcast_cluster_name,
+        cluster_members=consul_config.hazelcast_cluster_members,
     )
-
-    config_server_client = ConfigServerClient(service_config.config_server_netloc)
 
     consul_service_id = (
         SERVICE_NAME + "-" + "".join(random.sample(string.ascii_uppercase, 7))
@@ -295,6 +306,7 @@ async def api_lifespan(_: FastAPI):
             "counter_service": HazelcastQueueCounterService(
                 hz_client=hz_client,
                 instance_generator=ConsulRandomInstanceGenerator("counter", consul),
+                queue_name=consul_config.counter_hazelcast_queue_name,
             ),
         }
         consul.agent.service.deregister(
