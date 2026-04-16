@@ -41,7 +41,8 @@ class ServiceInstance[InstanceAddress](AbstractAsyncContextManager):
         return await super().__aexit__(exc_type, exc_value, traceback)
 
 
-class AbstractRandomInstanceGenerator[InstanceAddress](metaclass=ABCMeta):
+class AbstractRandomInstanceGenerator(metaclass=ABCMeta):
+    type InstanceAddress = tuple[str, int]
     type ServiceInstances = Iterable[InstanceAddress]
 
     @property

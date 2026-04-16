@@ -10,6 +10,7 @@ services:
     environment:
       FACADE_HAZELCAST_CLUSTER: ${HAZELCAST_CLUSTER_NAME}
       FACADE_CONFIGSERVER_NETLOC: "config-server"
+      FACADE_CONSUL_HOST: "consul"
     ports:
       - 80
     depends_on:
@@ -18,6 +19,9 @@ services:
       counter:
         condition: service_started
       config-server:
+        condition: service_healthy
+        restart: true
+      consul:
         condition: service_healthy
         restart: true
     develop:
@@ -36,10 +40,14 @@ services:
     environment:
       LOGGING_HAZELCAST_CLUSTER: ${HAZELCAST_CLUSTER_NAME}
       LOGGING_CONFIGSERVER_NETLOC: "config-server"
+      LOGGING_CONSUL_HOST: "consul"
     depends_on:
       hazelcast:
         condition: service_started
       config-server:
+        condition: service_healthy
+        restart: true
+      consul:
         condition: service_healthy
         restart: true
     develop:
@@ -64,12 +72,18 @@ services:
       COUNTER_MONGODB_CONNECTION_STRING: "mongodb://${MONGODB_COUNTER_USER}:${MONGODB_COUNTER_PASSWORD}@mongodb"
       COUNTER_HAZELCAST_CLUSTER: ${HAZELCAST_CLUSTER_NAME}
       COUNTER_CONFIGSERVER_NETLOC: "config-server"
+      COUNTER_CONSUL_HOST: "consul"
     depends_on:
       hazelcast:
         condition: service_started
       config-server:
         condition: service_healthy
         restart: true
+      consul:
+        condition: service_healthy
+        restart: true
+      mongodb:
+        condition: service_started
     develop:
       watch:
         - path: services/countersvc
@@ -128,6 +142,18 @@ services:
             "max_instances": 3
           }
         }
+    restart: unless-stopped
+
+  consul:
+    image: hashicorp/consul
+    ports:
+      - 127.0.0.1:8500:8500
+    healthcheck:
+      test: ["CMD", "consul", "info", "-http-addr=127.0.0.1:8500"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 3s
     restart: unless-stopped
 
 volumes:

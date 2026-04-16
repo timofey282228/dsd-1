@@ -1,20 +1,18 @@
 import asyncio
-import logging
-from typing import Optional
+from typing import Any
 
-from config_server_client import ConfigServerClient, InstanceAddress
+from consul import Consul
 
 from .abstract_random_instance_generator import AbstractRandomInstanceGenerator
 
-logger = logging.getLogger(__name__)
 
+class ConsulRandomInstanceGenerator(AbstractRandomInstanceGenerator):
 
-class ConfigServerRandomInstanceGenerator(AbstractRandomInstanceGenerator):
-    def __init__(self, service: str, config_server_client: ConfigServerClient):
-        self.config_server = config_server_client
+    def __init__(self, service: str, consul: Consul):
+        self.consul = consul
         self._service_name = service
         self._refresh = asyncio.Event()
-        self._instances: Optional[list[InstanceAddress]] = None
+        self._instances = None
 
     @property
     def service_name(self):
@@ -33,4 +31,9 @@ class ConfigServerRandomInstanceGenerator(AbstractRandomInstanceGenerator):
         return self._refresh
 
     async def get_instances(self):
-        return (await self.config_server.get_instances(self.service_name)).root
+        return list(
+            map(
+                lambda s: (s["Service"]["Address"], s["Service"]["Port"]),
+                self.consul.health.service(self.service_name, passing=True)[1],
+            )
+        )

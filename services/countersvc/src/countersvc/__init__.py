@@ -1,12 +1,16 @@
 import logging
 import logging.config
+import random
+import socket
+import string
 from abc import ABCMeta
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Optional
 
 import pydantic
 from config_server_client import ConfigServerClient
+from consul import Check, Consul
 from fastapi import Body, FastAPI, Request
 from hazelcast.client import HazelcastClient
 from hazelcast.config import Config as HazelcastConfig
@@ -58,6 +62,9 @@ class Config(BaseSettings):
         default=["127.0.0.1", "hazelcast"], alias="HAZELCAST_CLUSTER_MEMBERS"
     )
     config_server_netloc: str = pydantic.Field(alias="CONFIGSERVER_NETLOC")
+    consul_host: Optional[str] = pydantic.Field(default=None, alias="CONSUL_HOST")
+    consul_port: Optional[int] = pydantic.Field(default=None, alias="CONSUL_PORT")
+    consul_token: Optional[str] = pydantic.Field(default=None, alias="CONSUL_TOKEN")
 
 
 #  MARK: API
@@ -72,6 +79,11 @@ class ApiState(Mapping, metaclass=ABCMeta):
 @asynccontextmanager
 async def api_lifespan(_: FastAPI):
     service_config = Config()
+    consul = Consul(
+        host=service_config.consul_host,
+        port=service_config.consul_port,
+        token=service_config.consul_token,
+    )
     config_server_client = ConfigServerClient(service_config.config_server_netloc)
 
     hz_config = HazelcastConfig()
@@ -82,6 +94,25 @@ async def api_lifespan(_: FastAPI):
     hz_client = HazelcastClient(config=hz_config)
 
     await config_server_client.register(SERVICE_NAME, SERVICE_PORT, HEALTHCHECK_PATH)
+
+    consul_service_id = (
+        SERVICE_NAME + "-" + "".join(random.sample(string.ascii_uppercase, 7))
+    )
+    consul_service_address = socket.gethostbyname(socket.gethostname())
+    logger.info("Registering with Consul server as %s", consul_service_id)
+    assert consul.agent.service.register(
+        name=SERVICE_NAME,
+        service_id=consul_service_id,
+        address=consul_service_address,
+        port=SERVICE_PORT,
+        token=service_config.consul_token,
+        check=Check.http(
+            url=f"http://{consul_service_address}:{SERVICE_PORT}{HEALTHCHECK_PATH}",
+            interval="5s",
+            timeout="2s",
+            deregister="15s",
+        ),
+    ), "Consul service must be registered successfully"
 
     async with AsyncMongoClient(
         service_config.mongodb_connection_string.encoded_string(),
@@ -100,7 +131,9 @@ async def api_lifespan(_: FastAPI):
             "config": service_config,
             "queue_listener": queue_listener,
         }
-
+        consul.agent.service.deregister(
+            consul_service_id, token=service_config.consul_token
+        )
         queue_listener.shutdown()
 
     await config_server_client.unregister(SERVICE_NAME, SERVICE_PORT)

@@ -7,6 +7,7 @@ dependencies = [
     "config-server-client>=0.1.0",
     "fastapi (>=0.135.0,<0.136.0)",
     "hazelcast-python-client>=5.6.0",
+    "py-consul>=1.7.1",
     "pydantic (>=2.12.5,<3.0.0)",
     "pydantic-settings>=2.13.1",
     "pymongo>=4.16.0",
