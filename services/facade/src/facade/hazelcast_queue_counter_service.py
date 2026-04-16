@@ -9,7 +9,7 @@ from hazelcast.proxy import Queue
 
 from . import AllUserBalances, TransactionRequest, UserBalance, UserId
 from .abstract_counter_service import AbstractCounterService
-from .instance_generator import RandomInstanceGenerator, ServiceInstance
+from .configserver_instance_generator import ConfigServerRandomInstanceGenerator
 
 
 class AddTransactionMessage(pydantic.BaseModel):
@@ -23,10 +23,12 @@ class HazelcastQueueCounterService(AbstractCounterService):
     def __init__(
         self,
         hz_client: HazelcastClient,  # not the asyncio Hazelcast client, unfortunately
-        instance_generator: RandomInstanceGenerator,
+        instance_generator: ConfigServerRandomInstanceGenerator,
     ):
         self.queue: Queue = hz_client.get_queue(self.QUEUE_NAME)
-        self.instance_generator: RandomInstanceGenerator = instance_generator
+        self.instance_generator: ConfigServerRandomInstanceGenerator = (
+            instance_generator
+        )
 
     def _add_transaction_callback(self, future: HzFuture):
         pass

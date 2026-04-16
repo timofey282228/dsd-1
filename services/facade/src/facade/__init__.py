@@ -2,18 +2,16 @@ import asyncio
 import datetime
 import functools
 import logging
-import random
 import time
 from abc import ABCMeta
 from collections.abc import Coroutine, Mapping
 from contextlib import asynccontextmanager
-from typing import Annotated, Awaitable, Callable, Iterable
+from typing import Annotated, Awaitable, Callable
 from uuid import UUID, uuid7
 
 import httpx
 import pydantic
 from config_server_client import ConfigServerClient
-from facade.instance_generator import RandomInstanceGenerator, ServiceInstance
 from fastapi import Body, FastAPI, Query, Request
 from hazelcast import HazelcastClient
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -127,11 +125,13 @@ class LoggingService(_Timed):
     def __init__(
         self,
         http_client: httpx.AsyncClient,
-        instance_generator: RandomInstanceGenerator,
+        instance_generator: ConfigServerRandomInstanceGenerator,
     ):
         super().__init__()
         self.http_client = http_client
-        self.instance_generator: RandomInstanceGenerator = instance_generator
+        self.instance_generator: ConfigServerRandomInstanceGenerator = (
+            instance_generator
+        )
 
     async def instance(self) -> ServiceInstance:
         return await self.instance_generator.random_instance()
@@ -254,7 +254,7 @@ async def api_lifespan(_: FastAPI):
         yield {
             "logging_service": LoggingService(
                 http_client=http_client,
-                instance_generator=RandomInstanceGenerator(
+                instance_generator=ConfigServerRandomInstanceGenerator(
                     "logging",
                     config_server_client,
                 ),
@@ -262,7 +262,7 @@ async def api_lifespan(_: FastAPI):
             # "counter_service": HttpCounterService(http_client=http_client),
             "counter_service": HazelcastQueueCounterService(
                 hz_client=hz_client,
-                instance_generator=RandomInstanceGenerator(
+                instance_generator=ConfigServerRandomInstanceGenerator(
                     "counter",
                     config_server_client,
                 ),
@@ -421,5 +421,6 @@ async def request_proc_time(request: Request):
 
 
 from .abstract_counter_service import AbstractCounterService
+from .configserver_instance_generator import ConfigServerRandomInstanceGenerator
 from .hazelcast_queue_counter_service import HazelcastQueueCounterService
-from .http_counter_service import HttpCounterService
+from .abstract_random_instance_generator import ServiceInstance

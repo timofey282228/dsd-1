@@ -1,19 +1,18 @@
 import asyncio
 import logging
 import random
+from abc import ABCMeta, abstractmethod
 from contextlib import AbstractAsyncContextManager
 from functools import partial
 from typing import Iterable, Optional, Self
 
-from config_server_client import ConfigServerClient, InstanceAddress
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__ + ".services")
 
 
-class ServiceInstance(AbstractAsyncContextManager):
+class ServiceInstance[InstanceAddress](AbstractAsyncContextManager):
     def __init__(
         self,
-        generator: RandomInstanceGenerator,
+        generator: AbstractRandomInstanceGenerator,
         instance: InstanceAddress,
     ):
         self.instance_generator = generator
@@ -42,19 +41,30 @@ class ServiceInstance(AbstractAsyncContextManager):
         return await super().__aexit__(exc_type, exc_value, traceback)
 
 
-class RandomInstanceGenerator:
-    def __init__(self, service: str, config_server_client: ConfigServerClient):
-        self.service_name = service
-        self.config_server = config_server_client
-        self.refresh = asyncio.Event()
-        self.instances: Optional[list[InstanceAddress]] = None
+class AbstractRandomInstanceGenerator[InstanceAddress](metaclass=ABCMeta):
+    type ServiceInstances = Iterable[InstanceAddress]
 
-    async def random_instance(self):
+    @property
+    @abstractmethod
+    def service_name(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def refresh(self) -> asyncio.Event: ...
+
+    @property
+    @abstractmethod
+    def instances(self) -> Optional[list[InstanceAddress]]: ...
+
+    @abstractmethod
+    async def get_instances() -> ServiceInstances:
+        """Get instances by querying the config server"""
+        ...
+
+    async def random_instance(self) -> ServiceInstance[InstanceAddress]:
         if self.instances is None or len(self.instances) == 0 or self.refresh.is_set():
             logger.info("Fetching new instances for %s", self.service_name)
-            instances = sorted(
-                (await self.config_server.get_instances(self.service_name)).root
-            )
+            instances = sorted(await self.get_instances())
             if len(instances) > 0:
                 self.refresh.clear()
             self.instances = instances
