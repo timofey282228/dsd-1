@@ -354,7 +354,7 @@ async def _timed_transaction(
 ) -> TimedTransactionResult:
     async with asyncio.TaskGroup() as backend_tasks:
         logging_task = backend_tasks.create_task(timed(logging_coro))
-        counter_task = backend_tasks.crate_task(timed(counter_coro))
+        counter_task = backend_tasks.create_task(timed(counter_coro))
 
     logging_time, _ = logging_task.result()
     counter_time, balance = counter_task.result()
